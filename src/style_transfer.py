@@ -95,9 +95,11 @@ def main(style_image, content_image, n_steps, a=0.1, b=1e-3):
     content_image = content_image / content_image.max()
 
     # get white noise image to run gradient descent on for output image
-    output_image = Variable(torch.rand(content_image.shape), requires_grad=True)
+    # output_image = Variable(torch.rand(content_image.shape), requires_grad=True)
+    output_image = Variable(content_image.detach().clone(), requires_grad=True)
 
     model = vgg19(pretrained=True).features # only want feature maps, don't need classifier portion
+    model.eval()
 
     # freeze parameters so transfer learning gradient descent just affects images, doesn't retrain network
     for param in model.parameters():
@@ -113,7 +115,7 @@ def main(style_image, content_image, n_steps, a=0.1, b=1e-3):
     _ = model(style_image)
     target_style_representation = get_style_representation({k: v.detach() for k, v in feature_maps.items()})
 
-    optimizer = optim.SGD([output_image], lr=1e-3, momentum=0.9)
+    optimizer = optim.SGD([output_image], lr=1e-2, momentum=0.9)
     output_image = train(output_image, 
                          target_style_representation, 
                          target_content_representation, 
@@ -125,7 +127,8 @@ def main(style_image, content_image, n_steps, a=0.1, b=1e-3):
 
     output_image = output_image.detach().numpy()
     output_image = np.transpose(output_image, [1, 2, 0])
-    print(output_image.min(), output_image.max())
+    # print(output_image.min(), output_image.max())
+    output_image = (output_image - output_image.min()) / (output_image.max() - output_image.min())
     plt.imsave('../output_images/{}_{}.png'.format(content_name, style_name), output_image)
     plt.imshow(output_image)
     plt.show()
