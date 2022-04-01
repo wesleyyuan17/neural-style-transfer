@@ -10,16 +10,18 @@ from skimage import io, transform
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.autograd import Variable
 from torchvision.models import vgg19 
 from torchsummary import summary
 
 
-# INPUT_SIZE = (3, 224, 224)
-FEATURE_MAP_IDX = {3: 'fm1', 8: 'fm2', 17: 'fm3', 26: 'fm4', 35: 'fm5'} # output of ReLU layers right before 5 pooling layers
+# what I think are the layers conv1_1, conv2_1, conv3_1, conv4_1, conv4_2, conv5_1
+FEATURE_MAP_IDX = {1: 'fm1', 6: 'fm2', 11: 'fm3', 20: 'fm4', 22: 'content', 29: 'fm5'}
 
 
 def read_image(path):
     return io.imread(path)
+
 
 def set_hooks(model):
     activation = {}
@@ -36,37 +38,32 @@ def set_hooks(model):
 
 def get_style_representation(feature_maps):
     # per paper, after flatten inner product b/w rows of vectorized feature maps
-    feature_maps = get_content_representation(feature_maps)
+    del feature_maps['content']
     for k, v in feature_maps.items():
-        feature_maps[k] = (torch.matmul(v, v.t()), v.shape[1])
+        v = v.flatten(start_dim=1)
+        feature_maps[k] = torch.matmul(v, v.t()) / (v.shape[0] * v.shape[1])
     
     return feature_maps
 
 
 def get_content_representation(feature_maps):
     # per paper, flatten to have n_filter x (height * width) representation
-    for k, v in feature_maps.items():
-        feature_maps[k] = v.flatten(start_dim=1)
-
-    return feature_maps
+    return feature_maps['content'].flatten(start_dim=1)
 
 
 def style_loss(target, output):
     total_loss = 0
     for k in target.keys():
-        G, M = target[k]
-        N = G.shape[0]
-        A, _ = output[k]
-        E = torch.sum((G - A)**2) / (4 * N * N * M * M)
+        G = target[k]
+        A = output[k]
+        E = 0.25 * torch.sum((G - A)**2)
         total_loss += 0.2 * E
     
     return total_loss
 
 
 def content_loss(target, output):
-    P = target['fm4']
-    F = output['fm4']
-    return 0.5 * torch.sum((F - P)**2)
+    return 0.5 * torch.sum((target - output)**2)
 
 
 def train(output_image, target_style_representation, target_content_representation, feature_maps, model, optimizer, n_steps, a, b):
@@ -87,13 +84,18 @@ def train(output_image, target_style_representation, target_content_representati
 
 
 def main(style_image, content_image, n_steps, a=0.1, b=1e-3):
+    # for saving model later
+    style_name = style_image.split('.')[0]
+    content_name = content_image.split('.')[0]
+
     # load images and models
-    style_image = read_image('../style_images/{}'.format(style_image))
-    content_image = torch.Tensor(read_image('../content_images/{}'.format(content_image))).permute([2, 0, 1])
+    style_image = read_image('../style_images/{}'.format(style_image)).transpose([2, 0, 1])
+    content_image = torch.Tensor(read_image('../content_images/{}'.format(content_image)).transpose([2, 0, 1]))
     style_image = torch.Tensor(transform.resize(style_image, content_image.shape))
+    content_image = content_image / content_image.max()
 
     # get white noise image to run gradient descent on for output image
-    output_image = torch.rand(content_image.shape, requires_grad=True)
+    output_image = Variable(torch.rand(content_image.shape), requires_grad=True)
 
     model = vgg19(pretrained=True).features # only want feature maps, don't need classifier portion
 
@@ -111,7 +113,7 @@ def main(style_image, content_image, n_steps, a=0.1, b=1e-3):
     _ = model(style_image)
     target_style_representation = get_style_representation({k: v.detach() for k, v in feature_maps.items()})
 
-    optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
+    optimizer = optim.SGD([output_image], lr=1e-3, momentum=0.9)
     output_image = train(output_image, 
                          target_style_representation, 
                          target_content_representation, 
@@ -123,7 +125,8 @@ def main(style_image, content_image, n_steps, a=0.1, b=1e-3):
 
     output_image = output_image.detach().numpy()
     output_image = np.transpose(output_image, [1, 2, 0])
-    plt.imsave('../output_images/test.png', output_image)
+    print(output_image.min(), output_image.max())
+    plt.imsave('../output_images/{}_{}.png'.format(content_name, style_name), output_image)
     plt.imshow(output_image)
     plt.show()
 
