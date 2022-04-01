@@ -12,7 +12,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
+
 from torchvision.models import vgg19 
+from torchvision import transforms
+
 from torchsummary import summary
 
 from util import *
@@ -59,19 +62,30 @@ def main(style_image, content_image, n_steps, lr, optimizer, a=1e-3, b=0.1):
     style_name = style_image.split('.')[0]
     content_name = content_image.split('.')[0]
 
-    # load images and models
-    style_image = read_image('../style_images/{}'.format(style_image)).transpose([2, 0, 1])
-    content_image = torch.Tensor(read_image('../content_images/{}'.format(content_image)).transpose([2, 0, 1])).unsqueeze(0)
-    style_image = torch.Tensor(transform.resize(style_image, content_image.shape))
-    content_image = content_image / content_image.max() # rescale from int to float
+    # load images and perform transformations
+    style_image = read_image('../style_images/{}'.format(style_image))
+    content_image = read_image('../content_images/{}'.format(content_image))
+
+    # rescale from int to float
+    style_image = style_image / style_image.max() 
+    content_image = content_image / content_image.max()
+
+    preprocessing = transforms.Compose([transforms.ToTensor(),
+                                        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                                             std=[0.229, 0.224, 0.225])])
+    # postprocessing = transforms.Compose([transforms.Normalize(mean=[-0.485, -0.456, -0.406],
+    #                                                           std=[1/0.229, 1/0.224, 1/0.225])])            
+
+    content_image = preprocessing(content_image).float()
+    style_image = preprocessing(style_image).float()
 
     # get white noise image to run gradient descent on for output image
-    output_image = torch.rand(content_image.shape, device=device, requires_grad=True)
-    # output_image = Variable(content_image.detach().clone(), requires_grad=True)
-
+    # output_image = torch.rand(content_image.shape, device=device, requires_grad=True)
+    output_image = Variable(content_image.data.clone(), requires_grad=True) # start from content image as warm start
+    
     model = vgg19(pretrained=True).features # only want feature maps, don't need classifier portion
-    model.eval()
     model.to(device)
+    model.eval()
 
     # freeze parameters so transfer learning gradient descent just affects images, doesn't retrain network
     for param in model.parameters():
