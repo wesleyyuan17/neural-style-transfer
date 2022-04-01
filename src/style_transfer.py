@@ -62,7 +62,7 @@ def main(style_image, content_image, n_steps, lr, optimizer, a=1e-3, b=0.1):
     style_image = read_image('../style_images/{}'.format(style_image)).transpose([2, 0, 1])
     content_image = torch.Tensor(read_image('../content_images/{}'.format(content_image)).transpose([2, 0, 1])).unsqueeze(0)
     style_image = torch.Tensor(transform.resize(style_image, content_image.shape))
-    content_image = content_image / content_image.max()
+    content_image = content_image / content_image.max() # rescale from int to float
 
     # get white noise image to run gradient descent on for output image
     output_image = torch.rand(content_image.shape, device=device, requires_grad=True)
@@ -100,7 +100,7 @@ def main(style_image, content_image, n_steps, lr, optimizer, a=1e-3, b=0.1):
                          n_steps, 
                          a, b)
 
-    output_image = output_image.detach().numpy()
+    output_image = output_image.detach().numpy().squeeze()
     output_image = np.transpose(output_image, [1, 2, 0])
     # print(output_image.min(), output_image.max())
     output_image = (output_image - output_image.min()) / (output_image.max() - output_image.min())
