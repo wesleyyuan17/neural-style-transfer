@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import argparse
 from skimage import io, transform
+from tqdm import tqdm
 
 import torch
 import torch.nn as nn
@@ -19,7 +20,7 @@ from util import *
 
 def train(output_image, target_style_representation, target_content_representation, feature_maps, model, optimizer, n_steps, a, b):
     if isinstance(optimizer, optim.SGD):
-        for iter in range(n_steps):
+        for iter in tqdm(range(n_steps)):
             # get feature maps of current output image
             _ = model(output_image)
             output_content_representation = get_content_representation(feature_maps.copy())
@@ -46,7 +47,7 @@ def train(output_image, target_style_representation, target_content_representati
                 
             return loss
 
-        for iter in range(n_steps):
+        for iter in tqdm(range(n_steps)):
             optimizer.step(closure)
     
     return output_image
@@ -100,7 +101,10 @@ def main(style_image, content_image, n_steps, lr, optimizer, a=1e-3, b=0.1):
                          n_steps, 
                          a, b)
 
-    output_image = output_image.detach().numpy().squeeze()
+    if torch.cuda.is_available():
+        output_image = output_image.cpu().detach().numpy().squeeze()
+    else:
+        output_image = output_image.detach().numpy().squeeze()
     output_image = np.transpose(output_image, [1, 2, 0])
     # print(output_image.min(), output_image.max())
     output_image = (output_image - output_image.min()) / (output_image.max() - output_image.min())
