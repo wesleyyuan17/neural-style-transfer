@@ -44,7 +44,10 @@ def train(output_image, target_style_representation, target_content_representati
             output_content_representation = get_content_representation(feature_maps.copy())
             output_style_representation = get_style_representation(feature_maps.copy())
 
-            loss = a * content_loss(target_content_representation, output_content_representation) + b * style_loss(target_style_representation, output_style_representation)
+            content = content_loss(target_content_representation, output_content_representation)
+            style = style_loss(target_style_representation, output_style_representation)
+            loss = a * content + b * style
+
             if loss.requires_grad:
                 loss.backward()
                 
@@ -55,7 +58,8 @@ def train(output_image, target_style_representation, target_content_representati
     
     return output_image
 
-def main(style_image, content_image, n_steps, lr, optimizer, a=1e-3, b=0.1):
+
+def main(style_image, content_image, n_steps, lr, optimizer, a=1e-2, b=1):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # for saving model later
@@ -66,15 +70,14 @@ def main(style_image, content_image, n_steps, lr, optimizer, a=1e-3, b=0.1):
     style_image = read_image('../style_images/{}'.format(style_image))
     content_image = read_image('../content_images/{}'.format(content_image))
 
-    # rescale from int to float
-    style_image = style_image / style_image.max() 
-    content_image = content_image / content_image.max()
-
-    preprocessing = transforms.Compose([transforms.ToTensor(),
+    preprocessing = transforms.Compose([transforms.Resize(512),
+                                        transforms.ToTensor(),
                                         transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                                             std=[0.229, 0.224, 0.225])])
-    # postprocessing = transforms.Compose([transforms.Normalize(mean=[-0.485, -0.456, -0.406],
-    #                                                           std=[1/0.229, 1/0.224, 1/0.225])])            
+                                                             std=[0.229, 0.224, 0.225]),
+                                        transforms.Lambda(lambda x: x * 255)])
+    postprocessing = transforms.Compose([transforms.Lambda(lambda x: x / 255),
+                                        transforms.Normalize(mean=[-0.485, -0.456, -0.406],
+                                                              std=[1/0.229, 1/0.224, 1/0.225])])            
 
     content_image = preprocessing(content_image).float()
     style_image = preprocessing(style_image).float()
@@ -116,12 +119,13 @@ def main(style_image, content_image, n_steps, lr, optimizer, a=1e-3, b=0.1):
                          a, b)
 
     if torch.cuda.is_available():
-        output_image = output_image.cpu().detach().numpy().squeeze()
-    else:
-        output_image = output_image.detach().numpy().squeeze()
+        output_image = output_image.cpu()
+    output_image = postprocessing(output_image.detach())
+    output_image = output_image.numpy().squeeze()
     output_image = np.transpose(output_image, [1, 2, 0])
-    # print(output_image.min(), output_image.max())
     output_image = (output_image - output_image.min()) / (output_image.max() - output_image.min())
+    # output_image[output_image > 1] = 1
+    # output_image[output_image < 0] = 0
     plt.imsave('../output_images/{}_{}.png'.format(content_name, style_name), output_image)
     plt.imshow(output_image)
     plt.show()

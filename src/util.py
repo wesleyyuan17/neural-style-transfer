@@ -1,4 +1,5 @@
 from skimage import io
+from PIL import Image
 
 import torch
 
@@ -8,7 +9,8 @@ FEATURE_MAP_IDX = {1: 'fm1', 6: 'fm2', 11: 'fm3', 20: 'fm4', 22: 'content', 29: 
 
 
 def read_image(path):
-    return io.imread(path)
+    # return io.imread(path)
+    return Image.open(path)
 
 
 def set_hooks(model):
@@ -44,9 +46,9 @@ def style_loss(target, output):
     for k in target.keys():
         G = target[k]
         A = output[k]
-        E = 0.25 * torch.sum((G - A)**2)
-        total_loss += 0.2 * E
-    
+        total_loss += torch.sum((G - A)**2)
+    total_loss *= 1e3
+
     return total_loss
 
 
